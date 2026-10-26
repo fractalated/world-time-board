@@ -68,6 +68,8 @@
     text-transform: uppercase;
     color: var(--muted);
   }
+  .fmt { display: flex; align-items: center; gap: 10px; }
+  .fmt-label { font-size: .8rem; font-weight: 500; color: var(--muted); }
   .seg { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
   .seg button {
     font: inherit;
@@ -181,9 +183,12 @@
 <div class="wrap">
   <header class="bar">
     <div class="brand">World Time Board</div>
-    <div class="seg" role="group" aria-label="Clock format">
-      <button type="button" id="fmt12" aria-pressed="true">12-hour</button>
-      <button type="button" id="fmt24" aria-pressed="false">24-hour</button>
+    <div class="fmt">
+      <span class="fmt-label" id="fmtLabel">Clock format</span>
+      <div class="seg" role="group" aria-labelledby="fmtLabel">
+        <button type="button" id="fmt12" aria-pressed="true">12-hour</button>
+        <button type="button" id="fmt24" aria-pressed="false">24-hour</button>
+      </div>
     </div>
   </header>
 
@@ -196,7 +201,7 @@
     </div>
     <div class="clock clock--utc">
       <p class="kicker">Coordinated Universal Time</p>
-      <p class="zone">UTC · the reference for every offset below</p>
+      <p class="zone">UTC · always 24-hour · the reference for every offset below</p>
       <p class="time time--big" id="utcTime"><span class="hm">--:--</span><span class="s">:--</span><span class="ap"></span></p>
       <p class="date" id="utcDate">&nbsp;</p>
       <p class="extra" id="utcExtra">&nbsp;</p>
@@ -279,19 +284,20 @@
   const cityOf = tz => tz ? tz.split('/').pop().replace(/_/g, ' ') : 'Local time';
   const dayKey = p => p.y * 10000 + p.mo * 100 + p.d;
 
-  // Hour format: default to the viewer's locale, remember an explicit choice.
-  let cycle = '12';
+  // Hour format: default to the viewer's system setting, remember a choice that differs from it.
+  let systemCycle = '12';
   try {
     const hc = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
-    if (hc === 'h23' || hc === 'h24') cycle = '24';
+    if (hc === 'h23' || hc === 'h24') systemCycle = '24';
   } catch (e) {}
+  let cycle = systemCycle;
   try { const saved = localStorage.getItem('wtb-cycle'); if (saved === '12' || saved === '24') cycle = saved; } catch (e) {}
 
-  function setTime(el, p) {
-    const hh = cycle === '24' ? pad(p.h) : String(p.h % 12 || 12);
+  function setTime(el, p, c = cycle) {
+    const hh = c === '24' ? pad(p.h) : String(p.h % 12 || 12);
     el.querySelector('.hm').textContent = `${hh}:${pad(p.mi)}`;
     el.querySelector('.s').textContent = `:${pad(p.s)}`;
-    el.querySelector('.ap').textContent = cycle === '24' ? '' : (p.h < 12 ? 'AM' : 'PM');
+    el.querySelector('.ap').textContent = c === '24' ? '' : (p.h < 12 ? 'AM' : 'PM');
   }
 
   // Build tiles once.
@@ -330,7 +336,7 @@
     $('localDate').textContent = formatter(LOCAL, 'long').format(now);
 
     const up = parts('UTC', now);
-    setTime($('utcTime'), up);
+    setTime($('utcTime'), up, '24');
     $('utcDate').textContent = formatter('UTC', 'long').format(now);
     const doy = Math.round((Date.UTC(up.y, up.mo - 1, up.d) - Date.UTC(up.y, 0, 1)) / 86400000) + 1;
     $('utcExtra').textContent = `${up.y}-${pad(up.mo)}-${pad(up.d)} · day ${doy} of ${up.y}`;
@@ -365,7 +371,10 @@
   }
   function choose(c) {
     cycle = c;
-    try { localStorage.setItem('wtb-cycle', c); } catch (e) {}
+    try {
+      if (c === systemCycle) localStorage.removeItem('wtb-cycle');
+      else localStorage.setItem('wtb-cycle', c);
+    } catch (e) {}
     syncButtons();
     render();
   }
