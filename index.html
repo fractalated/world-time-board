@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Your local time, UTC, and twelve time zones from Hawaii to Australia, updated every second.">
+<title>World Time Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: viewer's clock left and UTC right as the headline pair, then a west-to-east board of twelve zone tiles */
+  :root {
+    --bg: #EDF0F3;
+    --surface: #FFFFFF;
+    --ink: #16212B;
+    --muted: #5B6773;
+    --line: #D3DAE1;
+    --chip: #E3E8EE;
+    --accent: #1D5FC4;
+    --day: #F1CD78;
+    --night: #C3CCD8;
+    --font-time: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E141B; --surface: #151E28; --ink: #E6ECF2; --muted: #93A0AE; --line: #263342;
+      --chip: #223040; --accent: #79AEFF; --day: #8C6C2C; --night: #2A3645;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E141B; --surface: #151E28; --ink: #E6ECF2; --muted: #93A0AE; --line: #263342;
+    --chip: #223040; --accent: #79AEFF; --day: #8C6C2C; --night: #2A3645;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  p { margin: 0; }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-block: 20px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* Top bar */
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand {
+    font-family: var(--font-time);
+    font-size: .78rem;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .seg { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+  .seg button {
+    font: inherit;
+    font-size: .82rem;
+    font-weight: 500;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 6px 13px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Headline clocks */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .clock { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .clock--utc { align-items: flex-end; text-align: right; }
+  .kicker {
+    font-size: .74rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .zone { font-size: .9rem; color: var(--muted); }
+  .date { font-size: 1.05rem; font-weight: 500; }
+  .extra { font-family: var(--font-time); font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .time {
+    font-family: var(--font-time);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    white-space: nowrap;
+    display: flex;
+    align-items: baseline;
+  }
+  .time .s { font-size: .5em; color: var(--muted); }
+  .time .ap { font-size: .34em; font-weight: 600; letter-spacing: .04em; margin-left: .5em; color: var(--muted); }
+  .time .ap:empty { display: none; }
+  .time--big { font-size: clamp(2.4rem, 6vw, 4.6rem); font-weight: 500; letter-spacing: -.02em; padding-block: 4px; }
+
+  /* Zone board */
+  .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .tile.is-here { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tile-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .tile-names { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .tile-name { font-size: 1rem; font-weight: 700; }
+  .tile-sub { font-size: .78rem; color: var(--muted); }
+  .tile-abbr {
+    flex: none;
+    font-family: var(--font-time);
+    font-size: .7rem;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.5;
+  }
+  .tile .time { font-size: 1.55rem; font-weight: 500; }
+  .tile-date { font-size: .88rem; }
+  .tile-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 20px; font-size: .78rem; color: var(--muted); }
+  .chips { display: flex; gap: 6px; }
+  .chip { font-size: .68rem; font-weight: 700; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--ink); }
+  .chip--here { background: var(--accent); color: var(--surface); }
+
+  .strip {
+    position: relative;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--night) 0 25%, var(--day) 25% 75%, var(--night) 75% 100%);
+  }
+  .strip i {
+    position: absolute;
+    top: -3px;
+    width: 3px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--ink);
+    transform: translateX(-50%);
+  }
+
+  .note { font-size: .78rem; color: var(--muted); max-width: 65ch; }
+
+  @media (max-width: 1000px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 720px) {
+    .hero { grid-template-columns: minmax(0, 1fr); }
+    .clock--utc { align-items: flex-start; text-align: left; }
+    .time--big { font-size: clamp(2.2rem, 12vw, 3.6rem); }
+    .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 440px) { .board { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="brand">World Time Board</div>
+    <div class="seg" role="group" aria-label="Clock format">
+      <button type="button" id="fmt12" aria-pressed="true">12-hour</button>
+      <button type="button" id="fmt24" aria-pressed="false">24-hour</button>
+    </div>
+  </header>
+
+  <section class="hero" aria-label="Your time and UTC">
+    <div class="clock">
+      <p class="kicker">Your time</p>
+      <p class="zone" id="localZone">Local time zone</p>
+      <p class="time time--big" id="localTime"><span class="hm">--:--</span><span class="s">:--</span><span class="ap"></span></p>
+      <p class="date" id="localDate">&nbsp;</p>
+    </div>
+    <div class="clock clock--utc">
+      <p class="kicker">Coordinated Universal Time</p>
+      <p class="zone">UTC · the reference for every offset below</p>
+      <p class="time time--big" id="utcTime"><span class="hm">--:--</span><span class="s">:--</span><span class="ap"></span></p>
+      <p class="date" id="utcDate">&nbsp;</p>
+      <p class="extra" id="utcExtra">&nbsp;</p>
+    </div>
+  </section>
+
+  <section class="board" id="board" aria-label="Time zones, west to east"></section>
+
+  <p class="note">Zones run west to east. The bar on each tile is a 24-hour day, with 6 AM to 6 PM shaded as daytime and the mark at the current hour. Times come from your device's clock and update every second.</p>
+</div>
+
+<script>
+(() => {
+  const ZONES = [
+    { name: 'Hawaii',    sub: 'Honolulu',                    tz: 'Pacific/Honolulu' },
+    { name: 'Alaska',    sub: 'Anchorage',                   tz: 'America/Anchorage' },
+    { name: 'Pacific',   sub: 'Los Angeles · Seattle',       tz: 'America/Los_Angeles' },
+    { name: 'Arizona',   sub: 'Phoenix · no daylight saving', tz: 'America/Phoenix' },
+    { name: 'Mountain',  sub: 'Denver',                      tz: 'America/Denver' },
+    { name: 'Central',   sub: 'Chicago',                     tz: 'America/Chicago' },
+    { name: 'Eastern',   sub: 'New York',                    tz: 'America/New_York' },
+    { name: 'London',    sub: 'United Kingdom',              tz: 'Europe/London',    abbr: off => off === 60 ? 'BST' : 'GMT' },
+    { name: 'Vietnam',   sub: 'Hanoi · Ho Chi Minh City',    tz: 'Asia/Ho_Chi_Minh', abbr: () => 'ICT' },
+    { name: 'Hong Kong', sub: 'Hong Kong SAR, China',        tz: 'Asia/Hong_Kong',   abbr: () => 'HKT' },
+    { name: 'Japan',     sub: 'Tokyo',                       tz: 'Asia/Tokyo',       abbr: () => 'JST' },
+    { name: 'Australia', sub: 'Sydney · Melbourne',          tz: 'Australia/Sydney', abbr: off => off === 660 ? 'AEDT' : 'AEST' },
+  ];
+
+  let LOCAL;
+  try { LOCAL = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { LOCAL = undefined; }
+
+  const cache = new Map();
+  const formatter = (tz, kind) => {
+    const key = `${tz}|${kind}`;
+    if (!cache.has(key)) {
+      const base = { timeZone: tz };
+      const opts = {
+        parts: { ...base, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' },
+        long:  { ...base, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' },
+        short: { ...base, weekday: 'short', month: 'short', day: 'numeric' },
+        name:  { ...base, timeZoneName: 'short' },
+      }[kind];
+      cache.set(key, new Intl.DateTimeFormat('en-US', opts));
+    }
+    return cache.get(key);
+  };
+
+  const pad = n => String(n).padStart(2, '0');
+
+  function parts(tz, date) {
+    const o = {};
+    for (const p of formatter(tz, 'parts').formatToParts(date)) o[p.type] = p.value;
+    return { y: +o.year, mo: +o.month, d: +o.day, h: +o.hour % 24, mi: +o.minute, s: +o.second };
+  }
+
+  // Minutes east of UTC, found by reading the wall clock in that zone.
+  function offsetMin(p, date) {
+    const wall = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+    return Math.round((wall - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+  }
+
+  function offsetLabel(min) {
+    if (min === 0) return 'UTC+0';
+    const a = Math.abs(min);
+    return `UTC${min < 0 ? '−' : '+'}${Math.floor(a / 60)}${a % 60 ? ':' + pad(a % 60) : ''}`;
+  }
+
+  function diffLabel(min) {
+    if (min === 0) return 'Same as you';
+    const a = Math.abs(min), h = Math.floor(a / 60), m = a % 60;
+    const span = h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
+    return `${span} ${min > 0 ? 'ahead' : 'behind'}`;
+  }
+
+  function zoneName(tz, date) {
+    const p = formatter(tz, 'name').formatToParts(date).find(x => x.type === 'timeZoneName');
+    return p && !/^(GMT|UTC)/.test(p.value) ? p.value : '';
+  }
+
+  const cityOf = tz => tz ? tz.split('/').pop().replace(/_/g, ' ') : 'Local time';
+  const dayKey = p => p.y * 10000 + p.mo * 100 + p.d;
+
+  // Hour format: default to the viewer's locale, remember an explicit choice.
+  let cycle = '12';
+  try {
+    const hc = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
+    if (hc === 'h23' || hc === 'h24') cycle = '24';
+  } catch (e) {}
+  try { const saved = localStorage.getItem('wtb-cycle'); if (saved === '12' || saved === '24') cycle = saved; } catch (e) {}
+
+  function setTime(el, p) {
+    const hh = cycle === '24' ? pad(p.h) : String(p.h % 12 || 12);
+    el.querySelector('.hm').textContent = `${hh}:${pad(p.mi)}`;
+    el.querySelector('.s').textContent = `:${pad(p.s)}`;
+    el.querySelector('.ap').textContent = cycle === '24' ? '' : (p.h < 12 ? 'AM' : 'PM');
+  }
+
+  // Build tiles once.
+  const board = document.getElementById('board');
+  const tiles = ZONES.map(z => {
+    const el = document.createElement('article');
+    el.className = 'tile';
+    el.innerHTML = `
+      <div class="tile-head">
+        <div class="tile-names"><span class="tile-name"></span><span class="tile-sub"></span></div>
+        <div class="tile-abbr"><div class="ab"></div><div class="off"></div></div>
+      </div>
+      <p class="time"><span class="hm">--:--</span><span class="s">:--</span><span class="ap"></span></p>
+      <p class="tile-date">&nbsp;</p>
+      <div class="tile-meta"><span class="diff"></span><span class="chips"></span></div>
+      <div class="strip" aria-hidden="true"><i></i></div>`;
+    el.querySelector('.tile-name').textContent = z.name;
+    el.querySelector('.tile-sub').textContent = z.sub;
+    board.appendChild(el);
+    return { z, el,
+      ab: el.querySelector('.ab'), off: el.querySelector('.off'), time: el.querySelector('.time'),
+      date: el.querySelector('.tile-date'), diff: el.querySelector('.diff'), chips: el.querySelector('.chips'),
+      mark: el.querySelector('.strip i') };
+  });
+
+  const $ = id => document.getElementById(id);
+
+  function render() {
+    const now = new Date();
+
+    const lp = parts(LOCAL, now);
+    const lOff = offsetMin(lp, now);
+    const lName = zoneName(LOCAL, now);
+    $('localZone').textContent = [cityOf(LOCAL), lName, offsetLabel(lOff)].filter(Boolean).join(' · ');
+    setTime($('localTime'), lp);
+    $('localDate').textContent = formatter(LOCAL, 'long').format(now);
+
+    const up = parts('UTC', now);
+    setTime($('utcTime'), up);
+    $('utcDate').textContent = formatter('UTC', 'long').format(now);
+    const doy = Math.round((Date.UTC(up.y, up.mo - 1, up.d) - Date.UTC(up.y, 0, 1)) / 86400000) + 1;
+    $('utcExtra').textContent = `${up.y}-${pad(up.mo)}-${pad(up.d)} · day ${doy} of ${up.y}`;
+
+    const lDay = dayKey(lp);
+    for (const t of tiles) {
+      const p = parts(t.z.tz, now);
+      const off = offsetMin(p, now);
+      t.ab.textContent = t.z.abbr ? t.z.abbr(off) : zoneName(t.z.tz, now);
+      t.off.textContent = offsetLabel(off);
+      setTime(t.time, p);
+      t.date.textContent = formatter(t.z.tz, 'short').format(now);
+      t.diff.textContent = diffLabel(off - lOff);
+
+      const here = t.z.tz === LOCAL;
+      t.el.classList.toggle('is-here', here);
+      const zDay = dayKey(p);
+      const chips = [];
+      if (here) chips.push('<span class="chip chip--here">You</span>');
+      if (zDay > lDay) chips.push('<span class="chip">Tomorrow</span>');
+      if (zDay < lDay) chips.push('<span class="chip">Yesterday</span>');
+      const html = chips.join('');
+      if (t.chips.innerHTML !== html) t.chips.innerHTML = html;
+
+      t.mark.style.left = `${((p.h + p.mi / 60) / 24) * 100}%`;
+    }
+  }
+
+  function syncButtons() {
+    $('fmt12').setAttribute('aria-pressed', String(cycle === '12'));
+    $('fmt24').setAttribute('aria-pressed', String(cycle === '24'));
+  }
+  function choose(c) {
+    cycle = c;
+    try { localStorage.setItem('wtb-cycle', c); } catch (e) {}
+    syncButtons();
+    render();
+  }
+  $('fmt12').addEventListener('click', () => choose('12'));
+  $('fmt24').addEventListener('click', () => choose('24'));
+  syncButtons();
+
+  // Tick on each second boundary.
+  function tick() {
+    render();
+    setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+  }
+  tick();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+})();
+</script>
+</body>
+</html>
